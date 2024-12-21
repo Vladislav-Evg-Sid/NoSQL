@@ -1,0 +1,320 @@
+{% extends "menu.html" %}
+{% block content %}
+<h2 style="width: 100%; text-align: center;">Таблица данных. {{ table_name }}</h2>
+
+<link rel="stylesheet" href="https://cdn.datatables.net/1.11.5/css/jquery.dataTables.min.css">
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+
+<table id="data_table" class="display" style="width:100%">
+    <thead>
+        <tr>
+            {% for column in columns %}
+                <th>{{ column }}</th>
+            {% endfor %}
+        </tr>
+    </thead>
+    <tbody>
+        {% for row in data %}
+            <tr>
+                {% for column in columns %}
+                    {% if column == "Исполнители" or column == "Треки" or column == "Ингредиенты"  %}
+                        <td data-id="{{ row['id'] }}" class="clickable-cell">
+                            {% for item in row[column] %}
+                                {{ item }}<br>
+                            {% endfor %}
+                        </td>
+                    {% else %}
+                        <td data-id="{{ row['id'] }}" class="clickable-cell">{{ row[column] }}</td>
+                    {% endif %}
+                {% endfor %}
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+<!-- Модальное окно -->
+<div class="modal fade" id="cellInfoModal" tabindex="-1" aria-labelledby="cellInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="cellInfoModalLabel"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="rowInfo"></div>
+            </div>
+            <div class="modal-footer">
+                <div id="modalFoooter-info"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<script>
+    $(document).ready(function() {
+        var table = $('#data_table').DataTable({
+            "paging": true,            // Включаем пагинацию
+            "pageLength": 25,          // Количество записей на странице
+            "lengthChange": true,      // возможность менять количество записей на странице
+            "ordering": true,          // Включаем сортировку
+            "info": true,              // Отображаем количество записей
+            "autoWidth": false,         // автоматическую ширину
+            "scrollX": true,
+            "dom": '<"top"flB>rt<"bottom"ip><"clear">', // Добавляем кнопку в блок поиска
+            "language": {
+                "lengthMenu": "Показать _MENU_ записей на странице",
+                "zeroRecords": "Ничего не найдено",
+                "info": "Показано с _START_ по _END_ из _TOTAL_ записей",
+                "infoEmpty": "Нет доступных записей",
+                "infoFiltered": "(отфильтровано из _MAX_ записей)",
+                "search": "Поиск:",
+                "paginate": {
+                    "first": "Первая",
+                    "last": "Последняя",
+                    "next": "Следующая",
+                    "previous": "Предыдущая"
+                }
+            }
+        });
+
+        // Добавляем кнопку справа от поля поиска
+        $('.dataTables_filter').append('<button id="new_row_btn" class="dt-button btn-primary">Добавить запись</button>');
+
+        // Добавляем обработчик события для кнопки
+        $('#new_row_btn').on('click', function() {
+            var tableName = "{{ table_name }}";
+            var rowData = [];
+            var typeCol = [];
+            var columnNames = table.columns().header().toArray().map(function(th) {
+                return $(th).text();
+            });
+
+            // Отправка AJAX-запроса на сервер
+            $.ajax({
+                url: '/handle_cell_click',
+                type: 'POST',
+                data: JSON.stringify({ row_data: rowData, column_names: columnNames, table_name: tableName, type_col: typeCol, IsModified: false }),
+                contentType: 'application/json',
+                success: function(response) {
+                    // Обновляем содержимое модального окна
+                    var rowInfoHtml = '<ul>';
+                    response.type_col.forEach(function(item, index) {
+                        if (response.type_col[index] == 1) {  // Строка
+                            rowInfoHtml += '<li><label>' + response.column_names[index] + ': </label><input type="text" class="form-control" data-index="' + index + '" placeholder="' + response.pattern[index] + '"></li>';
+                        } else if (response.type_col[index] == 2) {
+                            rowInfoHtml += '<li><label>' + response.column_names[index] + ': </label><textarea class="form-control" data-index="' + index + '" placeholder="' + response.pattern[index] + '" rows="5" cols="30" style="resize: none;"></textarea></li>';
+                        }
+                    });
+                    rowInfoHtml += '</ul>';
+
+                    // Обновляем заголовок модального окна
+                    var modalTitle = `${tableName}. Добавление данных`;
+                    $('#cellInfoModalLabel').text(modalTitle);
+
+                    $('#rowInfo').html(rowInfoHtml);
+
+                    $('#modalFoooter-info').html(
+                        '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button> ' +
+                        '<button type="button" class="btn btn-primary" id="saveNewRow">Сохранить</button> '
+                    )
+
+                    // Открываем модальное окно
+                    var modal = new bootstrap.Modal(document.getElementById('cellInfoModal'));
+                    modal.show();
+
+                    // Удаляем предыдущие обработчики событий
+                    $('#saveNewRow').off('click');
+
+                    // Обработчик события сохранения данных
+                    $('#saveNewRow').on('click', function() {
+                        var tableName = "{{ table_name }}";
+                        var RowData = response.row_data.slice(); // Создаем копию оригинальных данных
+                        $('#rowInfo input, #rowInfo textarea').each(function() {
+                            var index = $(this).data('index');
+                            RowData[index] = $(this).val();
+                        });
+
+                        // Отправка AJAX-запроса на сервер для сохранения изменений
+                        $.ajax({
+                            url: '/add_new_row',
+                            type: 'POST',
+                            data: JSON.stringify({ row_data: RowData, column_names: response.column_names, table_name: tableName }),
+                            contentType: 'application/json',
+                            success: function(response) {
+                                alert(response.message);
+                                if (response.IsCorrect) {
+                                    modal.hide();
+                                    location.reload();
+                                }
+                            },
+                            error: function(error) {
+                                alert('Ошибка: ' + error.responseText);
+                            }
+                        });
+                    });
+                },
+                error: function(error) {
+                    alert('Ошибка: ' + error.responseText);
+                }
+            });
+        });
+    });
+
+    // Обработчик события click для ячеек таблицы
+    $('.clickable-cell').on('click', function() {
+        var tableName = "{{ table_name }}";
+        var row = $(this).closest('tr'); // Получаем строку
+        var rowData = [];
+        var columnNames = [];
+        var typeCol = [];
+
+        // Получаем все значения строки и названия столбцов
+        row.find('td').each(function(index) {
+            rowData.push($(this).text());
+            columnNames.push($('#data_table thead th').eq(index).text());
+        });
+
+        // Отправка AJAX-запроса на сервер
+        $.ajax({
+            url: '/handle_cell_click',
+            type: 'POST',
+            data: JSON.stringify({ row_data: rowData, column_names: columnNames, table_name: tableName, type_col: typeCol, IsModified: true }),
+            contentType: 'application/json',
+            success: function(response) {
+                // Обновляем содержимое модального окна
+                var rowInfoHtml = '<ul>';
+                response.row_data.forEach(function(item, index) {
+                    if (response.type_col[index] == 1) {  // Строка
+                        rowInfoHtml += '<li><label>' + response.column_names[index] + ': </label><input type="text" class="form-control" value="' + item + '" data-index="' + index + '" placeholder="' + response.pattern[index] + '"></li>';
+                    } else if (response.type_col[index] == 2) {
+                        rowInfoHtml += '<li><label>' + response.column_names[index] + ': </label><textarea class="form-control" data-index="' + index + '" placeholder="' + response.pattern[index] + '" rows="5" cols="30" style="resize: none;">' + item + '</textarea></li>';
+                    }
+                });
+                rowInfoHtml += '</ul>';
+
+                // Обновляем заголовок модального окна
+                var modalTitle = `${tableName}. ${response.column_names[0]}: ${response.row_data[0]}`;
+                $('#cellInfoModalLabel').text(modalTitle);
+
+                $('#rowInfo').html(rowInfoHtml);
+
+                $('#modalFoooter-info').html(
+                    '<button type="button" class="btn btn-primary" id="saveChanges">Сохранить изменения</button> ' +
+                    '<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button> ' +
+                    '<button type="button" class="btn btn-danger" id="deleteRow">Удалить запись</button> ' +
+                    '<button type="button" class="btn btn-primary" id="make-report">Сформировать отчёт</button> '
+                    
+                )
+
+
+                // Открываем модальное окно
+                var modal = new bootstrap.Modal(document.getElementById('cellInfoModal'));
+                modal.show();
+
+                // Удаляем предыдущие обработчики событий
+                $('#saveChanges').off('click');
+                $('#deleteRow').off('click');
+                if (tableName == "Альбомы") {
+                    $('#OpenTraks').off('click');
+                }
+
+                // Обработчик сохранения изменений
+                $('#saveChanges').on('click', function() {
+                    var tableName = "{{ table_name }}";
+                    var RowData = response.row_data.slice(); // Создаем копию оригинальных данных
+                    $('#rowInfo input, #rowInfo select').each(function() {
+                        var index = $(this).data('index');
+                        if (response.type_col[index] == 1) {
+                            RowData[index] = $(this).val();
+                        } else if (response.type_col[index] == 2 || response.type_col[index] == 3 || response.type_col[index] == 4) {
+                            RowData[index] = $(this).val();
+                        }
+                    });
+                    
+                    var updatedRowData = response.row_data.slice(); // Создаем копию оригинальных данных
+                    $('#rowInfo input, #rowInfo textarea').each(function() {
+                        var index = $(this).data('index');
+                        RowData[index] = $(this).val();
+                    });
+
+                    // Отправка AJAX-запроса на сервер для сохранения изменений
+                    $.ajax({
+                        url: '/save_changes',
+                        type: 'POST',
+                        data: JSON.stringify({ row_data: RowData, column_names: response.column_names, table_name: tableName }),
+                        contentType: 'application/json',
+                        success: function(response) {
+                            alert(response.message);
+                            if (response.IsCorrect) {
+                                modal.hide();
+                                location.reload();
+                            }
+                        },
+                        error: function(error) {
+                            alert('Ошибка: ' + error.responseText);
+                        }
+                    });
+                });
+
+                // Обработчик удаления записи
+                $('#deleteRow').on('click', function() {
+
+                    // Отправка AJAX-запроса на сервер для удаления записи
+                    $.ajax({
+                        url: '/delete_row',
+                        type: 'POST',
+                        data: JSON.stringify({ del_id: response.row_data[0] , table_name: tableName }),
+                        contentType: 'application/json',
+                        success: function(response) {
+                            alert(response.message);
+                            if (response.IsCorrect) {
+                                modal.hide();
+                                location.reload();
+                            }
+                        },
+                        error: function(error) {
+                            alert('Ошибка: ' + error.responseText);
+                        }
+                    });
+                });
+
+                // Обработчик формирования отчёта
+                $('#make-report').on('click', function() {
+                    var tableName = "{{ table_name }}";
+                    var RowData = response.row_data.slice(); // Создаем копию оригинальных данных
+                    $('#rowInfo input, #rowInfo select').each(function() {
+                        var index = $(this).data('index');
+                        RowData[index] = $(this).val();
+                    });
+
+                    // Создаем форму для отправки данных
+                    var form = document.createElement('form');
+                    form.method = 'post';
+                    form.action = "/make_report";
+
+                    // Добавляем данные в форму
+                    var tableNameInput = document.createElement('input');
+                    tableNameInput.type = 'hidden';
+                    tableNameInput.name = 'table_name';
+                    tableNameInput.value = tableName;
+                    form.appendChild(tableNameInput);
+
+                    var rowDataInput = document.createElement('input');
+                    rowDataInput.type = 'hidden';
+                    rowDataInput.name = 'row_data';
+                    rowDataInput.value = JSON.stringify(RowData);
+                    form.appendChild(rowDataInput);
+
+                    // Отправляем форму
+                    document.body.appendChild(form);
+                    form.submit();
+                });
+            },
+            error: function(error) {
+                alert('Ошибка: ' + error.responseText);
+            }
+        });
+    });
+</script>
+{% endblock %}

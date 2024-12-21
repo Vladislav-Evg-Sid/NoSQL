@@ -1,0 +1,24 @@
+{% extends "menu.html" %}
+{% block content %}
+<h2 style="width: 100%; text-align: center;">Отчёт. Таблица: "{{ table_name }}"</h2>
+<div class="container">
+    {% for column in columns %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">{{ column }}</h5>
+                <p class="card-text">
+                    {% if column == "Рецепт" or column == "Ингредиенты"  %}
+                        <td data-id="{{ data['id'] }}" class="clickable-cell">
+                            {% for item in data[column] %}
+                                {{ item }}<br>
+                            {% endfor %}
+                        </td>
+                    {% else %}
+                        <td data-id="{{ data['id'] }}" class="clickable-cell">{{ data[column] }}</td>
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    {% endfor %}
+</div>
+{% endblock %}

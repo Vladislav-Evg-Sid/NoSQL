@@ -1,0 +1,14 @@
+{% extends "menu.html" %}
+
+{% block content %}
+<div class="container my-5">
+    <div class="row justify-content-around">
+        <div class="col-auto">
+            <button type="button" class="btn btn-dark" onclick="location.href='{{ url_for('table', filter='alboms') }}'">Альбомы</button>
+        </div>
+        <div class="col-auto">
+            <button type="button" class="btn btn-dark" onclick="location.href='{{ url_for('table', filter='recepts') }}'">Рецепты</button>
+        </div>
+    </div>
+</div>
+{% endblock %}
